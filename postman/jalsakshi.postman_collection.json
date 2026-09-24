@@ -1,0 +1,114 @@
+{
+  "info": {
+    "name": "JalSakshi Supervisor API",
+    "description": "Run top to bottom (Collection Runner). Login stores the session cookie; Workspace stores the ids used by the write requests. Every POST/PATCH needs Origin = baseUrl. Writes go to the real Supabase demo team: case notes are permanent.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "email", "value": "demo.supervisor@jalsakshi.local" },
+    { "key": "password", "value": "1234!" }
+  ],
+  "item": [
+    {
+      "name": "1. Login",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200 OK', () => pm.response.to.have.status(200));",
+        "pm.test('supervisor profile from Supabase', () => { const p = pm.response.json(); pm.expect(p.role).to.eql('supervisor'); pm.expect(p.team_id).to.be.a('string'); });"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Origin", "value": "{{baseUrl}}" }],
+        "body": { "mode": "raw", "raw": "{\"email\":\"{{email}}\",\"password\":\"{{password}}\"}" },
+        "url": "{{baseUrl}}/api/auth/login"
+      }
+    },
+    {
+      "name": "2. Session",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200 OK (cookie accepted)', () => pm.response.to.have.status(200));"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/auth/session" }
+    },
+    {
+      "name": "3. Workspace (read all team data)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200 OK', () => pm.response.to.have.status(200));",
+        "const w = pm.response.json();",
+        "pm.test('has cases and water sources', () => { pm.expect(w.cases.length).to.be.above(0); pm.expect(w.water_sources.length).to.be.above(0); });",
+        "const c = w.cases.find(c => c.status !== 'closed'), s = w.water_sources[0];",
+        "if (c) { pm.collectionVariables.set('caseId', c.id); pm.collectionVariables.set('caseVersion', c.version); }",
+        "pm.collectionVariables.set('sourceId', s.id);",
+        "pm.collectionVariables.set('nextSourceVersion', s.version + 1);",
+        "pm.collectionVariables.set('sourceMetadata', JSON.stringify(s.metadata || {}));"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/supervisor/workspace" }
+    },
+    {
+      "name": "4. Push: add case note",
+      "event": [
+        { "listen": "prerequest", "script": { "exec": [
+          "pm.collectionVariables.set('performedAt', new Date(Date.now() - 60000).toISOString());"
+        ] } },
+        { "listen": "test", "script": { "exec": [
+          "pm.test('200 OK', () => pm.response.to.have.status(200));"
+        ] } }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Origin", "value": "{{baseUrl}}" }],
+        "body": { "mode": "raw", "raw": "{\"case_id\":\"{{caseId}}\",\"kind\":\"referral\",\"description\":\"Postman API test - safe to ignore\",\"performed_by\":\"Postman\",\"performed_at\":\"{{performedAt}}\",\"expected_case_version\":{{caseVersion}}}" },
+        "url": "{{baseUrl}}/api/supervisor/case_actions"
+      }
+    },
+    {
+      "name": "5. Edit: water source metadata",
+      "event": [
+        { "listen": "prerequest", "script": { "exec": [
+          "const m = JSON.parse(pm.collectionVariables.get('sourceMetadata'));",
+          "m.postman_test = new Date().toISOString();",
+          "pm.collectionVariables.set('newMetadata', JSON.stringify(m));"
+        ] } },
+        { "listen": "test", "script": { "exec": [
+          "pm.test('200 OK (version must be current + 1)', () => pm.response.to.have.status(200));"
+        ] } }
+      ],
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Origin", "value": "{{baseUrl}}" }],
+        "body": { "mode": "raw", "raw": "{\"metadata\":{{newMetadata}},\"version\":{{nextSourceVersion}}}" },
+        "url": "{{baseUrl}}/api/supervisor/water_sources?id=eq.{{sourceId}}"
+      }
+    },
+    {
+      "name": "6. Verify writes reached Supabase",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "const w = pm.response.json();",
+        "pm.test('case note saved', () => pm.expect(w.case_actions.some(a => a.description === 'Postman API test - safe to ignore')).to.be.true);",
+        "pm.test('source edited', () => { const s = w.water_sources.find(s => s.id === pm.collectionVariables.get('sourceId')); pm.expect(s.version).to.eql(Number(pm.collectionVariables.get('nextSourceVersion'))); pm.expect(s.metadata.postman_test).to.be.a('string'); });"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/supervisor/workspace" }
+    },
+    {
+      "name": "7. Export CSV",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200 CSV', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/csv'); });"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/supervisor/export" }
+    },
+    {
+      "name": "8. Logout",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200 OK', () => pm.response.to.have.status(200));"
+      ] } }],
+      "request": { "method": "POST", "header": [{ "key": "Origin", "value": "{{baseUrl}}" }], "url": "{{baseUrl}}/api/auth/logout" }
+    },
+    {
+      "name": "9. Session after logout",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('401 signed out', () => pm.response.to.have.status(401));"
+      ] } }],
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/auth/session" }
+    }
+  ]
+}

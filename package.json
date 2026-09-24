@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "start": "node server/index.ts",
     "test": "node --test server/auth.test.ts server/supervisor.test.ts",
+    "test:api": "npx -y newman@6 run postman/jalsakshi.postman_collection.json",
     "test:database": "node --env-file=.env scripts/test-database.ts",
     "test:workflow": "node --env-file=.env scripts/test-workflow.ts",
     "db:migrate": "node --env-file=.env scripts/migrate.ts",
