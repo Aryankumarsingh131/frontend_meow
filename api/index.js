@@ -5,6 +5,7 @@ import { readConfig } from '../server/config.ts'
 
 let handler
 export default function api(req, res) {
+  if (req.headers['x-debug-url']) return res.end(JSON.stringify({ url: req.url }))
   const url = new URL(req.url, 'http://local'), path = url.searchParams.get('__path')
   if (path !== null) { url.searchParams.delete('__path'); req.url = `/api/${path}${url.search}` }
   try { handler ??= createAuthHandler(readConfig(process.env)) } catch (error) {
