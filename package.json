@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build --config vite.build.config.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "node --test server/auth.test.ts server/supervisor.test.ts",

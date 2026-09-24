@@ -73,7 +73,7 @@ export const initialCases: TestCase[] = [
     reportedAt: '2 hours ago',
     reportedTimestamp: Date.now() - 2 * 3600 * 1000,
     deadlineHours: 22,
-    deadlineLabel: '22h left (Turnaround target: 24h)',
+    deadlineLabel: '22h remaining',
     status: 'review_needed',
     confidence: 96.4,
     stripAlignment: 'good',
@@ -172,7 +172,6 @@ export const initialCases: TestCase[] = [
     labDetails: {
       labName: 'Sub-Divisional Water Quality Testing Laboratory, Sadar',
       assignedAt: 'Yesterday, 04:15 PM',
-      turnaroundTarget: '48 Hours (Standard JJM Lab Protocol)',
       reportNumber: 'NABL-WQ-2025-9912',
       isVerified: false,
     },
@@ -243,7 +242,6 @@ export const initialCases: TestCase[] = [
     labDetails: {
       labName: 'District Central Water Testing Lab, JJM Campus',
       assignedAt: '2 days ago',
-      turnaroundTarget: '24 Hours',
       reportNumber: 'NABL-REP-2025-4421',
       verifiedResult: 'Nitrate 58.0 mg/L & E.coli 12 CFU/100ml confirmed (Failed).',
       verifiedBy: 'Senior Microbiologist Dr. V. Sen',
@@ -397,7 +395,6 @@ export const initialCases: TestCase[] = [
     labDetails: {
       labName: 'State Central Public Health Lab',
       assignedAt: '5 days ago',
-      turnaroundTarget: '48h',
       reportNumber: 'NABL-FL-2025-8819',
       verifiedResult: 'Fluoride confirmed at 1.9 mg/L initially.',
       isVerified: true,

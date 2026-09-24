@@ -58,7 +58,6 @@ export interface TestCase {
   labDetails?: {
     labName: string;
     assignedAt: string;
-    turnaroundTarget: string;
     reportNumber?: string;
     verifiedResult?: string;
     verifiedBy?: string;
