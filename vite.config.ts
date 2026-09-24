@@ -25,6 +25,7 @@ export default defineConfig(({ mode, command }) => {
     },
   }
   // JALSAKSHI_* values remain server-only; never expose the database URL to the client.
-  return { plugins: [react(), auth], server: fsSecurityConfig }
+  // Render serves the built app + API via `npm start` (vite preview) on *.onrender.com.
+  return { plugins: [react(), auth], server: fsSecurityConfig, preview: { allowedHosts: ['.onrender.com'] } }
 })
 
