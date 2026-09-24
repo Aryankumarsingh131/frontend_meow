@@ -3,22 +3,28 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 import { createAuthHandler } from './server/auth.ts'
 import { readConfig } from './server/config.ts'
 
-export default defineConfig(({ mode }) => {
+const fsSecurityConfig = { fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/*.local'] } }
+
+export default defineConfig(({ mode, command }) => {
+  // During `vite build` (e.g. on Vercel CI) the dev-server auth middleware is
+  // not needed and JALSAKSHI_SUPABASE_* vars may not be present — skip it entirely.
+  if (command === 'build') {
+    return { plugins: [react()], server: fsSecurityConfig }
+  }
+
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env }
-  // Auth middleware is only needed at runtime (dev/preview server).
-  // Defer readConfig so that `vite build` (e.g. on Vercel) does not throw
-  // when JALSAKSHI_SUPABASE_URL / JALSAKSHI_SUPABASE_PUBLISHABLE_KEY are absent.
   const auth: Plugin = {
     name: 'jalsakshi-supabase-auth',
+    // readConfig is only called when the dev/preview server actually starts,
+    // never during a production build.
     configureServer(server) {
-      const config = readConfig(env)
-      server.middlewares.use(createAuthHandler(config))
+      server.middlewares.use(createAuthHandler(readConfig(env)))
     },
     configurePreviewServer(server) {
-      const config = readConfig(env)
-      server.middlewares.use(createAuthHandler(config))
+      server.middlewares.use(createAuthHandler(readConfig(env)))
     },
   }
   // JALSAKSHI_* values remain server-only; never expose the database URL to the client.
-  return { plugins: [react(), auth], server: { fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/*.local'] } } }
+  return { plugins: [react(), auth], server: fsSecurityConfig }
 })
+
