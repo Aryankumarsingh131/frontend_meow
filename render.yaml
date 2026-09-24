@@ -1,0 +1,23 @@
+# Render Blueprint: one web service serving the frontend + Supabase-backed API on the same origin.
+# Separate from the existing jalsakshi-api service; do not point this at that service.
+services:
+  - type: web
+    name: jalsakshi-supervisor
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: JALSAKSHI_ENVIRONMENT
+        value: production
+      - key: JALSAKSHI_TENANT_DATA_MODE
+        value: synthetic
+      - key: JALSAKSHI_SUPABASE_URL
+        sync: false
+      - key: JALSAKSHI_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: JALSAKSHI_SESSION_SECRET
+        generateValue: true
