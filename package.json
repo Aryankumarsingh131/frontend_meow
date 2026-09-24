@@ -7,15 +7,22 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test server/auth.test.ts server/supervisor.test.ts",
+    "test:database": "node --env-file=.env scripts/test-database.ts",
+    "test:workflow": "node --env-file=.env scripts/test-workflow.ts",
+    "db:migrate": "node --env-file=.env scripts/migrate.ts",
+    "demo:seed": "node --env-file=.env scripts/seed-demo.ts"
   },
   "dependencies": {
     "lucide-react": "^1.47.0",
+    "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
