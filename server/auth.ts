@@ -31,13 +31,14 @@ export function createAuthHandler(config: AuthConfig, request = fetch): Connect.
   })
   return async (req, res, next) => {
     if (!req.url?.startsWith('/api/auth/') && !req.url?.startsWith('/api/supervisor/')) return next()
+    const pathname = req.url.split('?')[0]
     res.setHeader('Content-Type', 'application/json')
     res.setHeader('Cache-Control', 'no-store')
     const reply = (status: number, body: object) => { res.statusCode = status; res.end(JSON.stringify(body)) }
     const token = /(?:^|;\s*)js_session=([^;]+)/.exec(req.headers.cookie || '')?.[1] || ''
     const now = Date.now()
     for (const [ip, attempt] of attempts) if (attempt.expires <= now) attempts.delete(ip)
-    if ((req.method === 'GET' && req.url === '/api/auth/session') || req.url.startsWith('/api/supervisor/')) {
+    if ((req.method === 'GET' && pathname === '/api/auth/session') || req.url.startsWith('/api/supervisor/')) {
       if(req.method !== 'GET') {
         try { if (!req.headers.origin || new URL(req.headers.origin).host !== req.headers.host) return reply(403, { error: 'Invalid origin.' }) } catch { return reply(403, { error: 'Invalid origin.' }) }
       }
@@ -61,7 +62,7 @@ export function createAuthHandler(config: AuthConfig, request = fetch): Connect.
     try {
       if (!req.headers.origin || new URL(req.headers.origin).host !== req.headers.host) return reply(403, { error: 'Invalid origin.' })
     } catch { return reply(403, { error: 'Invalid origin.' }) }
-    if (req.url === '/api/auth/logout') {
+    if (pathname === '/api/auth/logout') {
       const session = unseal(token, config.sessionKey)
       res.setHeader('Set-Cookie', cookie('', 0))
       // Revoking upstream invalidates the sealed cookie's token; local sign-out succeeds even during a provider outage.
@@ -70,7 +71,7 @@ export function createAuthHandler(config: AuthConfig, request = fetch): Connect.
       }
       return reply(200, { ok: true })
     }
-    if (req.url !== '/api/auth/login') return reply(404, { error: 'Not found.' })
+    if (pathname !== '/api/auth/login') return reply(404, { error: 'Not found.' })
     const ip = req.socket.remoteAddress || 'local'
     const attempt = attempts.get(ip) || { count: 0, expires: now + 900000 }
     if (attempt.count >= 10) return reply(429, { error: 'Too many attempts. Try again in 15 minutes.' })

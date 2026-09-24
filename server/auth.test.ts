@@ -24,7 +24,7 @@ async function withServer(provider: typeof fetch, run: (base: string) => Promise
   assert(address && typeof address === 'object')
   try { await run(`http://127.0.0.1:${address.port}`) } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())) }
 }
-const login = (base: string, body = { email: 'test@example.org', password: 'test-password' }) => fetch(`${base}/api/auth/login`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+const login = (base: string, body = { email: 'test@example.org', password: 'test-password' }) => fetch(`${base}/api/auth/login?from=test`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
 test('configuration rejects missing keys, Markdown, secret keys, and unsupported live data', () => {
   assert.throws(() => readConfig({}), /Set JALSAKSHI/)
