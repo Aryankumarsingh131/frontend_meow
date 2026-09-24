@@ -1,12 +1,27 @@
-import { randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import type { Connect } from 'vite'
 import type { AuthConfig } from './config.ts'
 import { supervisorProfile, supervisorApi, AccessError } from './supervisor.ts'
 
 type Session = { accessToken: string; expires: number }
 
+// Sessions live in an AES-GCM sealed cookie so any serverless instance can read them; the browser cannot.
+function seal(session: Session, key: Buffer) {
+  const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, iv)
+  const data = Buffer.concat([cipher.update(JSON.stringify(session)), cipher.final()])
+  return Buffer.concat([iv, cipher.getAuthTag(), data]).toString('base64url')
+}
+function unseal(token: string, key: Buffer): Session | undefined {
+  try {
+    const raw = Buffer.from(token, 'base64url'), decipher = createDecipheriv('aes-256-gcm', key, raw.subarray(0, 12))
+    decipher.setAuthTag(raw.subarray(12, 28))
+    const session = JSON.parse(Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString()) as Session
+    return session.expires > Date.now() ? session : undefined
+  } catch { return undefined }
+}
+
 export function createAuthHandler(config: AuthConfig, request = fetch): Connect.NextHandleFunction {
-  const sessions = new Map<string, Session>()
+  // ponytail: per-instance limiter; on serverless each instance counts separately (Supabase still rate-limits upstream).
   const attempts = new Map<string, { count: number; expires: number }>()
   const cookie = (token: string, maxAge: number) => `js_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${config.secureCookie ? '; Secure' : ''}`
   const upstream = (path: string, options: RequestInit = {}, accessToken?: string) => request(`${config.supabaseUrl}/auth/v1${path}`, {
@@ -21,23 +36,22 @@ export function createAuthHandler(config: AuthConfig, request = fetch): Connect.
     const reply = (status: number, body: object) => { res.statusCode = status; res.end(JSON.stringify(body)) }
     const token = /(?:^|;\s*)js_session=([^;]+)/.exec(req.headers.cookie || '')?.[1] || ''
     const now = Date.now()
-    for (const [id, session] of sessions) if (session.expires <= now) sessions.delete(id)
     for (const [ip, attempt] of attempts) if (attempt.expires <= now) attempts.delete(ip)
     if ((req.method === 'GET' && req.url === '/api/auth/session') || req.url.startsWith('/api/supervisor/')) {
       if(req.method !== 'GET') {
         try { if (!req.headers.origin || new URL(req.headers.origin).host !== req.headers.host) return reply(403, { error: 'Invalid origin.' }) } catch { return reply(403, { error: 'Invalid origin.' }) }
       }
-      const session = sessions.get(token)
+      const session = unseal(token, config.sessionKey)
       if (!session) return reply(401, { error: 'Sign in to continue.' })
       try {
         const response = await upstream('/user', {}, session.accessToken)
         if (response.status === 401 || response.status === 403) {
-          sessions.delete(token); res.setHeader('Set-Cookie', cookie('', 0))
+          res.setHeader('Set-Cookie', cookie('', 0))
           return reply(401, { error: 'Your session has expired. Please sign in again.' })
         }
         if (!response.ok) return reply(503, { error: 'Authentication is temporarily unavailable.' })
         const user = await response.json() as { id?: unknown; email?: unknown } | null
-        if (!sessions.has(token) || typeof user?.email !== 'string' || typeof user.id !== 'string') return reply(401, { error: 'Sign in to continue.' })
+        if (typeof user?.email !== 'string' || typeof user.id !== 'string') return reply(401, { error: 'Sign in to continue.' })
         const profile = await supervisorProfile(config,session.accessToken,{id:user.id,email:user.email},request)
         if(req.url.startsWith('/api/supervisor/')) return await supervisorApi(req,res,config,session.accessToken,profile,request)
         return reply(200, profile)
@@ -48,9 +62,9 @@ export function createAuthHandler(config: AuthConfig, request = fetch): Connect.
       if (!req.headers.origin || new URL(req.headers.origin).host !== req.headers.host) return reply(403, { error: 'Invalid origin.' })
     } catch { return reply(403, { error: 'Invalid origin.' }) }
     if (req.url === '/api/auth/logout') {
-      const session = sessions.get(token)
-      sessions.delete(token); res.setHeader('Set-Cookie', cookie('', 0))
-      // Local sign-out succeeds even during a provider outage.
+      const session = unseal(token, config.sessionKey)
+      res.setHeader('Set-Cookie', cookie('', 0))
+      // Revoking upstream invalidates the sealed cookie's token; local sign-out succeeds even during a provider outage.
       if (session) {
         try { await upstream('/logout?scope=local', { method: 'POST' }, session.accessToken) } catch { /* Local session already invalidated. */ }
       }
@@ -83,10 +97,8 @@ export function createAuthHandler(config: AuthConfig, request = fetch): Connect.
       // Provider tokens stay server-side. Reauthenticate when the access token expires.
       const profile = await supervisorProfile(config,result.access_token,{id:result.user.id,email:result.user.email},request)
       const maxAge = Math.min(Math.floor(result.expires_in), 28800)
-      const id = randomBytes(32).toString('hex')
-      sessions.delete(token); attempts.delete(ip)
-      sessions.set(id, { accessToken: result.access_token, expires: Date.now() + maxAge * 1000 })
-      res.setHeader('Set-Cookie', cookie(id, maxAge))
+      attempts.delete(ip)
+      res.setHeader('Set-Cookie', cookie(seal({ accessToken: result.access_token, expires: Date.now() + maxAge * 1000 }, config.sessionKey), maxAge))
       return reply(200, profile)
     } catch(error) { if(error instanceof AccessError) return reply(error.status,{error:error.message}); return reply(503, { error: 'Unable to reach authentication. Please try again.' }) }
   }
