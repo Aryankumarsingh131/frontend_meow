@@ -74,6 +74,8 @@ test('bad credentials are denied and repeated attempts are limited', async () =>
     for (let i = 0; i < 10; i++) assert.equal((await login(base)).status, 401)
     assert.equal((await login(base)).status, 429)
     assert.equal(count, 10)
+    // Another account behind the same address is not locked out.
+    assert.equal((await login(base, { email: 'other@example.org', password: 'test-password' })).status, 401)
   })
 })
 

@@ -72,10 +72,6 @@ export function createAuthHandler(config: AuthConfig, request = fetch): Connect.
       return reply(200, { ok: true })
     }
     if (pathname !== '/api/auth/login') return reply(404, { error: 'Not found.' })
-    const ip = req.socket.remoteAddress || 'local'
-    const attempt = attempts.get(ip) || { count: 0, expires: now + 900000 }
-    if (attempt.count >= 10) return reply(429, { error: 'Too many attempts. Try again in 15 minutes.' })
-    attempt.count++; attempts.set(ip, attempt)
     let input: { email?: unknown; password?: unknown }
     try {
       let body = ''
@@ -86,6 +82,12 @@ export function createAuthHandler(config: AuthConfig, request = fetch): Connect.
       input = JSON.parse(body)
       if (!input || typeof input.email !== 'string' || !input.email.trim() || typeof input.password !== 'string' || !input.password) return reply(400, { error: 'Enter your email and password.' })
     } catch { return reply(400, { error: 'Invalid request.' }) }
+    // Keyed by address + email: behind a proxy (Render, Vercel) every visitor shares one socket address,
+    // so an IP-only key would let 10 bad attempts by anyone lock out every user.
+    const key = `${req.socket.remoteAddress || 'local'}|${(input.email as string).trim().toLowerCase()}`
+    const attempt = attempts.get(key) || { count: 0, expires: now + 900000 }
+    if (attempt.count >= 10) return reply(429, { error: 'Too many attempts. Try again in 15 minutes.' })
+    attempt.count++; attempts.set(key, attempt)
     try {
       const response = await upstream('/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: (input.email as string).trim(), password: input.password }) })
       if (response.status === 429) return reply(429, { error: 'Too many sign-in attempts. Please try again later.' })
@@ -98,7 +100,7 @@ export function createAuthHandler(config: AuthConfig, request = fetch): Connect.
       // Provider tokens stay server-side. Reauthenticate when the access token expires.
       const profile = await supervisorProfile(config,result.access_token,{id:result.user.id,email:result.user.email},request)
       const maxAge = Math.min(Math.floor(result.expires_in), 28800)
-      attempts.delete(ip)
+      attempts.delete(key)
       res.setHeader('Set-Cookie', cookie(seal({ accessToken: result.access_token, expires: Date.now() + maxAge * 1000 }, config.sessionKey), maxAge))
       return reply(200, profile)
     } catch(error) { if(error instanceof AccessError) return reply(error.status,{error:error.message}); return reply(503, { error: 'Unable to reach authentication. Please try again.' }) }
